@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mes suivis</title>
+<style>
+:root{--primary:#4f46e5;--danger:#dc2626;--bg:#f4f6fb;--border:#e5e7eb;--muted:#6b7280}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:#1f2937}
+header{background:var(--primary);color:#fff;padding:14px 20px}
+header h1{margin:0;font-size:1.2rem}
+main{max-width:1200px;margin:0 auto;padding:14px;display:grid;gap:14px}
+.card{background:#fff;border-radius:12px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+label{font-size:.85rem;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+select,button{font:inherit;padding:9px;border:1px solid var(--border);border-radius:8px}
+button{background:var(--primary);color:#fff;border:none;cursor:pointer;font-weight:600}
+button.secondary{background:#e0e7ff;color:var(--primary)}
+button.danger{background:var(--danger);padding:4px 9px}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.muted{color:var(--muted);font-size:.85rem}
+.table-wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.9rem}
+th,td{padding:4px;border-bottom:1px solid var(--border);white-space:nowrap}
+th{text-align:right;color:var(--muted);font-weight:600;font-size:.8rem;padding:8px 4px}
+th:first-child,td:first-child{text-align:left}
+td input{width:100%;border:1px solid transparent;background:transparent;padding:6px;font:inherit;text-align:right;min-width:72px}
+td input.lib{text-align:left;min-width:200px}
+td input:hover,td input:focus{border-color:var(--border);background:#fff}
+td input:disabled{color:var(--muted);font-style:italic;cursor:default}
+td.tot{text-align:right;font-weight:600}
+tr.total td{font-weight:700;background:#eef2ff}
+</style>
+</head>
+<body>
+
+<header><h1>💰 Mes suivis</h1></header>
+
+<main>
+  <section class="card toolbar">
+    <label>Feuille
+      <select id="feuille"></select>
+    </label>
+    <button class="secondary" id="btn-ajouter">+ Ajouter une ligne</button>
+    <button class="secondary" id="btn-reset">Revenir aux données d'origine</button>
+    <span class="muted" id="info"></span>
+  </section>
+
+  <section class="card">
+    <div class="table-wrap"><table id="tableau"></table></div>
+  </section>
+</main>
+
+<script>
+// ---------- Données issues de CM_2.xlsx ----------
+// Chaque ligne : [libellé, [valeurs par colonne], calcul]
+// calcul = true → ligne calculée dans l'Excel d'origine (non modifiable, exclue du total)
+const FEUILLES = {
+  "Mes dépenses": {
+    colonnes: ["Sept. 2026","Oct. 2026","Nov. 2026","Déc. 2026","Janv. 2027","Févr. 2027","Mars 2027","Avr. 2027","Mai 2027","Juin 2027"],
+    total: true,
+    lignes: [
+      ["Épargne",             [0,0,150,150,150,150,150,150,150,150], false],
+      ["Loyer",               [143,316.5,125,125,120,120,150,150,120,160], false],
+      ["Bouygues Telecom",    [53,43,43,43,53,53,35,35,35,35], false],
+      ["Box",                 [6.5,13.5,13.5,12.5,12.5,12.5,12.5,12.5,12.5,12.5], false],
+      ["Essence",             [75,40,75,75,75,75,75,75,75,75], false],
+      ["Vie quotidienne",     [104.5,0,101,53,92.5,92.5,150.5,150.5,180.5,140.5], false],
+      ["Canal+",              [10,10,10,10,10,10,10,10,10,10], false],
+      ["Apple",               [3,null,null,null,3,3,3,3,3,3], false],
+      ["Assurance 35 10",     [45,45,45,45,45,45,45,45,45,45], false],
+      ["Frais bancaire",      [2,2,2,2,2,2,2,2,2,2], false],
+      ["PayPal",              [175,146.5,36.5,36.5,null,null,null,null,null,null], false],
+      ["DETTE GUELLO",        [null,null,0,65,null,null,null,null,null,null], false],
+      ["Résiliation forfait", [16,16,32,16,70,70,null,null,null,null], false]
+    ]
+  },
+
+  "Dépenses Raiane": {
+    colonnes: ["Sept. 2026","Oct. 2026","Nov. 2026","Déc. 2026","Janv. 2027","Févr. 2027","Mars 2027","Avr. 2027","Mai 2027","Juin 2027"],
+    total: true,
+    lignes: [
+      ["Loyer",                       [123,120,120,120,120,120,120,120,120,120], false],
+      ["Box",                         [5.5,12.5,12.5,12.5,12.5,12.5,12.5,12.5,12.5,12.5], false],
+      ["Canal+",                      [13,13,13,13,13,13,13,13,13,13], false],
+      ["Apple",                       [3,3,3,3,3,3,3,3,3,3], false],
+      ["Assurance auto et habitation",[40,40,40,40,40,40,40,40,40,40], false],
+      ["Matmut",                      [5.5,5.5,5.5,5.5,5.5,5.5,5.5,5.5,5.5,5.5], false]
+    ]
+  },
+
+  "Cagnotte Loyer": {
+    colonnes: ["Juil. 2026","Août 2026","Sept. 2026","Oct. 2026","Nov. 2026","Déc. 2026","Janv. 2027","Févr. 2027","Mars 2027","Avr. 2027","Mai 2027","Juin 2027"],
+    total: false,
+    lignes: [
+      ["Solde initial",              [0,48.5,161.5,440,0,182,77,137,27,117,47,107], true],
+      ["RAIANE",                     [0,9,95,null,242,120,120,120,120,120,120,120], false],
+      ["MAMAN",                      [0,0,48.5,null,90,90,90,90,90,90,90,90], false],
+      ["SALIM",                      [null,0,0,null,0,0,0,0,0,0,0,0], false],
+      ["MEDHI",                      [318.5,489,440,null,120,125,120,120,150,150,120,160], false],
+      ["Total versements (calcul)",  [318.5,498,583.5,0,452,335,330,330,360,360,330,370], true],
+      ["Prélèvement Loyer",          [null,270,270,260,270,270,270,270,270,270,270,270], false],
+      ["(rattrapage loyer)",         [270,5,35,0,0,0,0,0,0,0,0,0], false],
+      ["Gaz électricité",            [null,110,0,155,0,170,0,170,0,160,0,160], false],
+      ["(argent pioché)",            [null,null,0,25,null,0,0,0,0,0,0,0], false],
+      ["Total sorties (calcul)",     [270,385,305,440,270,440,270,440,270,430,270,430], true],
+      ["Solde fin de mois (calcul)", [48.5,161.5,440,0,182,77,137,27,117,47,107,47], true]
+    ]
+  },
+
+  "Épargne": {
+    colonnes: ["Sept. 2026","Oct. 2026","Nov. 2026","Déc. 2026","Janv. 2027","Févr. 2027","Mars 2027","Avr. 2027","Mai 2027","Juin 2027","Juil. 2027","Août 2027"],
+    total: true,
+    lignes: [
+      ["Surveillant",  [0,750,550,700,700,700,700,700,700,700,700,600], false],
+      ["Bourse",       [0,0,150,150,150,150,150,150,150,150,-600,-600], false],
+      ["🏟️",           [0,0,120,0,0,0,0,0,0,0,0,0], false],
+      ["Guello",       [97,-300,-1050,0,0,0,0,0,0,0,0,0], false],
+      ["SB",           [-97,null,0,-300,-300,-300,-300,-300,-300,-300,-300,-300], false],
+      ["LOYER",        [0,0,-213,0,0,0,0,0,0,0,0,0], false],
+      ["SMJ",          [0,0,900,0,0,0,0,0,0,0,1500,1500], false],
+      ["SAISIE UTILE", [0,-355,-170,0,0,0,0,0,0,0,0,0], false],
+      ["Vacances",     [0,0,0,-300,-300,-300,-300,-300,-300,-300,-300,-500], false],
+      ["CUMUL ÉPARGNE (jusqu'au mois)", [0,95,382,632,882,1132,1382,1632,1882,2132,3132,3832], true]
+    ]
+  },
+
+  "Dettes": {
+    colonnes: ["Guello","Yaston","TP","Loyer"],
+    total: false,
+    lignes: [
+      ["Ligne 1",            [300,0,null,null], false],
+      ["Ligne 2",            [955,null,null,null], false],
+      ["Ligne 3",            [62.5,null,null,null], false],
+      ["Total (calcul)",     [1317.5,0,0,0], true],
+      ["Total Yaston (calcul)", [null,1317.5,null,null], true]
+    ]
+  }
+};
+
+// ---------- Utilitaires ----------
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = n => n.toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
+const somme = v => v.reduce((s, x) => s + (x || 0), 0);
+const cle = nom => "suivi:" + nom;
+
+// ---------- Chargement et sauvegarde par feuille ----------
+let courante = Object.keys(FEUILLES)[0];
+const donnees = {};
+for (const nom of Object.keys(FEUILLES)) {
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem(cle(nom))); } catch (e) {}
+  donnees[nom] = s || JSON.parse(JSON.stringify(FEUILLES[nom]));
+}
+
+function sauver() {
+  try { localStorage.setItem(cle(courante), JSON.stringify(donnees[courante])); } catch (e) {}
+}
+
+// ---------- Affichage ----------
+function remplirChoix() {
+  $("feuille").innerHTML = Object.keys(FEUILLES)
+    .map(n => `<option ${n === courante ? "selected" : ""}>${esc(n)}</option>`).join("");
+}
+
+function afficher() {
+  const f = donnees[courante];
+  const n = f.colonnes.length;
+
+  let html = `<thead><tr><th>Libellé</th>${f.colonnes.map(c => `<th>${esc(c)}</th>`).join("")}<th>Total</th><th></th></tr></thead><tbody>`;
+  f.lignes.forEach(([lib, vals, calc], i) => {
+    const dis = calc ? "disabled" : "";
+    html += `<tr>
+      <td><input type="text" class="lib" data-i="${i}" value="${esc(lib)}" ${dis}></td>
+      ${vals.map((v, j) => `<td><input type="number" step="0.01" data-i="${i}" data-j="${j}" value="${v == null ? "" : v}" ${dis}></td>`).join("")}
+      <td class="tot">${calc ? "" : fmt(somme(vals))}</td>
+      <td>${calc ? "" : `<button class="danger" data-del="${i}" title="Supprimer la ligne">✕</button>`}</td>
+    </tr>`;
+  });
+  html += "</tbody>";
+
+  if (f.total) {
+    const sommes = Array.from({ length: n }, (_, j) =>
+      somme(f.lignes.filter(l => !l[2]).map(l => l[1][j])));
+    html += `<tfoot><tr class="total"><td>Total du mois</td>
+      ${sommes.map(s => `<td class="tot">${fmt(s)}</td>`).join("")}
+      <td class="tot">${fmt(somme(sommes))}</td><td></td></tr></tfoot>`;
+  }
+
+  $("tableau").innerHTML = html;
+  $("info").textContent = `${f.lignes.length} lignes. Les lignes en italique sont des calculs de l'Excel d'origine.`;
+}
+
+// ---------- Événements ----------
+$("feuille").addEventListener("change", e => {
+  courante = e.target.value;
+  afficher();
+});
+
+$("tableau").addEventListener("change", e => {
+  const t = e.target;
+  const ligne = donnees[courante].lignes[+t.dataset.i];
+  if (!ligne) return;
+  if (t.classList.contains("lib")) {
+    ligne[0] = t.value.trim() || "Sans libellé";
+  } else if (t.dataset.j !== undefined) {
+    const v = t.value.replace(",", ".");
+    ligne[1][+t.dataset.j] = v === "" ? null : parseFloat(v);
+  }
+  sauver();
+  afficher();
+});
+
+$("tableau").addEventListener("click", e => {
+  const i = e.target.dataset.del;
+  if (i === undefined) return;
+  if (!confirm("Supprimer cette ligne ?")) return;
+  donnees[courante].lignes.splice(+i, 1);
+  sauver();
+  afficher();
+});
+
+$("btn-ajouter").addEventListener("click", () => {
+  const f = donnees[courante];
+  f.lignes.push(["Nouvelle ligne", f.colonnes.map(() => null), false]);
+  sauver();
+  afficher();
+});
+
+$("btn-reset").addEventListener("click", () => {
+  if (!confirm("Revenir aux données d'origine pour cette feuille ? Vos modifications seront perdues.")) return;
+  donnees[courante] = JSON.parse(JSON.stringify(FEUILLES[courante]));
+  try { localStorage.removeItem(cle(courante)); } catch (e) {}
+  afficher();
+});
+
+// ---------- Démarrage ----------
+remplirChoix();
+afficher();
+</script>
+</body>
+</html>
